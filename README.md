@@ -1,6 +1,6 @@
 # CV Simulation
 
-A Unity 3D underwater simulation to generate synthetic, labeled data for computer vision.
+A Unity 3D underwater simulation to generate and test synthetic, labeled data for computer vision.
 
 ## Simulation Overview
 The simulation was built using Unity 2022 LTS. It uses the HDRP render pipeline and [Unity Perception](https://docs.unity3d.com/Packages/com.unity.perception@1.0/manual/index.html). See [this tutorial](https://github.com/Unity-Technologies/com.unity.perception/blob/main/com.unity.perception/Documentation~/Tutorial/TUTORIAL.md) to get started with Unity Perception.
@@ -94,5 +94,5 @@ python Datasets/roboflow_upload.py <COCO dataset path>
 ```
 Images that are successfully uploaded are moved to the `success` directory. You may need to rerun `roboflow_upload.py` if any images fail to upload.
 
-## CV Workflow
-For a complete guide on our CV workflow, visit [Computer Vision Workflow](https://dukerobotics.github.io/wiki/#/computer_vision/workflow) on our wiki.
+## Credits
+Cloned from Dukes Robotics CV: [https://dukerobotics.github.io](https://github.com/DukeRobotics/cv-simulation)
