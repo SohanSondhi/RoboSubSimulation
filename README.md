@@ -9,7 +9,7 @@ The simulation is setup to generate synthetic images of the gate and buoy with a
 
 The camera captures the gate and buoy from a variety of different distances and angles. In addition to the camera movements, the sun's position, buoy and gate glyphs, and gate boxes are also randomized. This ensures that the camera captures the gate and buoy under a variety of different conditions leading to a more robust CV model.
 
-## Code Overview
+## Code Overview    
 The code is written in C# in the following files:
 - [CameraController.cs](/Assets/CameraController.cs): Controls the camera movements.
 - [RandomizeGateHue.cs](/Assets/RandomizeGateHue.cs): Randomizes the hue of the gate.
