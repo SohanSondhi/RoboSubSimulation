@@ -1,6 +1,6 @@
 # CV Simulation
 
-A Unity 3D underwater simulation to generate and test synthetic, labeled data for computer vision.
+A Unity 3D simulation to test YOLO models.
 
 ## Simulation Overview
 The simulation was built using Unity 2022 LTS. It uses the HDRP render pipeline and [Unity Perception](https://docs.unity3d.com/Packages/com.unity.perception@1.0/manual/index.html). See [this tutorial](https://github.com/Unity-Technologies/com.unity.perception/blob/main/com.unity.perception/Documentation~/Tutorial/TUTORIAL.md) to get started with Unity Perception.
