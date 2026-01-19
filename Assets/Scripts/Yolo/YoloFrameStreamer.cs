@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -11,16 +12,21 @@ namespace RoboSubSimulation.Yolo
     [RequireComponent(typeof(Camera))]
     public class YoloFrameStreamer : MonoBehaviour
     {
-        [Header("Capture")]
+        [Header("Capture Settings")]
+        [Tooltip("Base capture width.")]
         public int width = 640;
+
+        [Tooltip("Base capture height (ignored if autoMatchScreenAspect is true).")]
         public int height = 640;
 
-        [Tooltip("Target capture FPS to feed to Sentis inference.")]
+        [Tooltip("Auto-calculate height to match screen aspect ratio. This ensures bounding boxes align correctly.")]
+        public bool autoMatchScreenAspect = true;
+
+        [Tooltip("Target frames per second for capture.")]
         public float captureFps = 12f;
 
-        [Tooltip("If true, this camera is inference-only and renders off-screen into a RenderTexture. " +
-                 "Do NOT enable this on the player-visible camera.")]
-        public bool renderOffscreen = true;
+        [Tooltip("If true, camera renders only to RT (offscreen). If false, camera also renders to screen.")]
+        public bool renderOffscreen = false;
 
         [Header("References")]
         [Tooltip("Target Sentis client that will run inference locally.")]
@@ -28,9 +34,14 @@ namespace RoboSubSimulation.Yolo
 
         private Camera _cam;
         private RenderTexture _rt;
-        private RenderTexture _prevTargetTexture;
+        private byte[] _rgb24;
+        private float _lastCaptureTime;
+        private bool _readbackPending;
 
-        private float _nextCaptureTime;
+        private int _actualWidth;
+        private int _actualHeight;
+
+        public RenderTexture CaptureTexture => _rt;
 
         private void Awake()
         {
@@ -46,23 +57,14 @@ namespace RoboSubSimulation.Yolo
                 return;
             }
 
-            EnsureResources();
+            UpdateCaptureDimensions();
+            CreateResources();
 
-            if (renderOffscreen)
-            {
-                // Inference camera: OK to render permanently into RT.
-                _prevTargetTexture = _cam.targetTexture;
-                _cam.targetTexture = _rt;
-            }
-
-            _nextCaptureTime = Time.time;
+            Debug.Log($"[YoloFrameStreamer] Started. Capture: {_actualWidth}x{_actualHeight}, Screen: {Screen.width}x{Screen.height}, RenderOffscreen: {renderOffscreen}");
         }
 
         private void OnDisable()
         {
-            if (_cam != null)
-                _cam.targetTexture = _prevTargetTexture;
-
             if (_rt != null)
             {
                 _rt.Release();
@@ -71,63 +73,142 @@ namespace RoboSubSimulation.Yolo
             }
         }
 
-        private void EnsureResources()
+        private void UpdateCaptureDimensions()
         {
-            if (_rt == null || _rt.width != width || _rt.height != height)
+            if (autoMatchScreenAspect && Screen.width > 0 && Screen.height > 0)
             {
-                if (_rt != null)
-                {
-                    _rt.Release();
-                    Destroy(_rt);
-                }
-
-                _rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32)
-                {
-                    name = "YoloCaptureRT",
-                    useMipMap = false,
-                    autoGenerateMips = false
-                };
-                _rt.Create();
+                float screenAspect = (float)Screen.width / Screen.height;
+                _actualWidth = width;
+                _actualHeight = Mathf.RoundToInt(width / screenAspect);
+                _actualHeight = Mathf.Max(16, (_actualHeight / 2) * 2); // Ensure even number
             }
+            else
+            {
+                _actualWidth = width;
+                _actualHeight = height;
+            }
+        }
+
+        private void CreateResources()
+        {
+            if (_rt != null)
+            {
+                _rt.Release();
+                Destroy(_rt);
+            }
+
+            _rt = new RenderTexture(_actualWidth, _actualHeight, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "YoloCaptureRT",
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+            _rt.Create();
+
+            _rgb24 = new byte[_actualWidth * _actualHeight * 3];
+
+            Debug.Log($"[YoloFrameStreamer] Created RT: {_actualWidth}x{_actualHeight}");
         }
 
         private void LateUpdate()
         {
-            if (captureFps <= 0f)
-                return;
+            if (sentisClient == null) return;
+            if (_readbackPending) return;
 
-            if (Time.time < _nextCaptureTime)
-                return;
+            float interval = 1f / Mathf.Max(1f, captureFps);
+            if (Time.unscaledTime - _lastCaptureTime < interval) return;
 
-            _nextCaptureTime = Time.time + (1f / captureFps);
+            _lastCaptureTime = Time.unscaledTime;
+
+            // Check if screen aspect changed
+            if (autoMatchScreenAspect)
+            {
+                float screenAspect = (float)Screen.width / Screen.height;
+                int expectedHeight = Mathf.RoundToInt(width / screenAspect);
+                expectedHeight = Mathf.Max(16, (expectedHeight / 2) * 2);
+
+                if (Mathf.Abs(expectedHeight - _actualHeight) > 2)
+                {
+                    Debug.Log($"[YoloFrameStreamer] Screen aspect changed, recreating RT...");
+                    UpdateCaptureDimensions();
+                    CreateResources();
+                }
+            }
 
             if (!renderOffscreen)
             {
-                // Single-camera debug mode: temporarily render into RT.
-                _prevTargetTexture = _cam.targetTexture;
+                StartCoroutine(CaptureEndOfFrame());
+            }
+            else
+            {
+                // Offscreen: render directly to RT
+                var prevTarget = _cam.targetTexture;
                 _cam.targetTexture = _rt;
                 _cam.Render();
-                _cam.targetTexture = _prevTargetTexture;
+                _cam.targetTexture = prevTarget;
+                RequestReadback();
             }
+        }
 
-            // In offscreen mode, the camera already renders into _rt each frame.
+        private IEnumerator CaptureEndOfFrame()
+        {
+            yield return new WaitForEndOfFrame();
+
+            // Render from camera to RT to capture the same view as on screen
+            var prevTarget = _cam.targetTexture;
+            _cam.targetTexture = _rt;
+            _cam.Render();
+            _cam.targetTexture = prevTarget;
+
+            RequestReadback();
+        }
+
+        private void RequestReadback()
+        {
+            if (_rt == null) return;
+            _readbackPending = true;
             AsyncGPUReadback.Request(_rt, 0, TextureFormat.RGB24, OnReadback);
         }
 
         private void OnReadback(AsyncGPUReadbackRequest req)
         {
-            if (!enabled) return;
-            if (req.hasError) return;
+            _readbackPending = false;
 
-            try
+            // Guard against callback after object destruction (e.g., stopping play mode)
+            if (this == null) return;
+
+            if (req.hasError)
             {
-                var data = req.GetData<byte>();
-                var rgb = data.ToArray();
-                sentisClient.QueueRgbFrame(rgb, width, height);
+                Debug.LogWarning("[YoloFrameStreamer] GPU readback error.");
+                return;
             }
-            catch
+
+            var data = req.GetData<byte>();
+            if (data.Length != _rgb24.Length)
             {
-                // ignore transient errors
+                Debug.LogWarning($"[YoloFrameStreamer] Size mismatch: got {data.Length}, expected {_rgb24.Length}");
+                return;
+            }
+
+            data.CopyTo(_rgb24);
+            FlipVertical(_rgb24, _actualWidth, _actualHeight, 3);
+
+            sentisClient?.QueueRgbFrame(_rgb24, _actualWidth, _actualHeight);
+        }
+
+        private static void FlipVertical(byte[] data, int w, int h, int channels)
+        {
+            int rowSize = w * channels;
+            byte[] temp = new byte[rowSize];
+
+            for (int y = 0; y < h / 2; y++)
+            {
+                int topRow = y * rowSize;
+                int bottomRow = (h - 1 - y) * rowSize;
+
+                Buffer.BlockCopy(data, topRow, temp, 0, rowSize);
+                Buffer.BlockCopy(data, bottomRow, data, topRow, rowSize);
+                Buffer.BlockCopy(temp, 0, data, bottomRow, rowSize);
             }
         }
     }
