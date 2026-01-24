@@ -305,7 +305,19 @@ Save in `Assets/Models/` and Unity will import it as a **TextAsset**.
 ---
 
 ## Setup in Unity
+Quick wiring to connect the supplied YOLO scripts to a Camera and UI overlay.
 
+- Create an empty GameObject and add the `YoloSentisClient` component. Set `Model Asset` to your imported ONNX, `Labels` to `labels.txt`, `Input Size` to your model input (e.g., 640), `Assume Letterboxed` = true, and set `Score Threshold`/`IOU Threshold` as desired.
+
+- On the Camera you want to use for detection, add `YoloFrameStreamer` and set `Width` (e.g., 640), enable `Auto Match Screen Aspect`, set `Capture Fps` (e.g., 12–15), and assign the `YoloSentisClient` to `Sentis Client`.
+
+- Create a `Canvas` (UI → Canvas). Under it add an empty UI GameObject and attach `YoloBBoxOverlayUGUI`. Assign the `YoloSentisClient` to the overlay and ensure the Canvas Scaler is set to `Scale With Screen Size` (reference resolution e.g., 1920x1080).
+
+- Important: set the Game view aspect ratio to 16:9 (for example 1920x1080). The overlay mapping is tuned for a widescreen capture; using 16:9 ensures correct box alignment.
+
+- Wiring summary: Camera (`YoloFrameStreamer`) → `YoloSentisClient`; Canvas child (`YoloBBoxOverlayUGUI`) → `YoloSentisClient`.
+
+- Play & verify: press Play and check the Console for `[YoloSentisClient] First frame received` and `dets=` logs. If boxes are misaligned, try `Screen Space - Camera` on the Canvas or enable `PreserveAspect` in the overlay.
 
 
 ---
