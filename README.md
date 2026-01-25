@@ -1,5 +1,9 @@
 # Unity Simulation - YOLO Testing Environment
 
+<p align="center">
+   <img src="Docs/Media/gifoftutorial.gif" alt="Simulation GIF" width="800" />
+</p>
+
 A Unity 3D simulation for **testing** trained YOLO models in a realistic underwater robotics environment with real-time inference powered by Unity Sentis.
 
 ## Table of Contents
